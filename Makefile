@@ -30,3 +30,48 @@ psql:
 build:
 	docker compose build api
 
+# ===========================
+# テスト（build ステージで実行）
+# ===========================
+
+# build ステージをテスト用にタグ付け
+build-test-image:
+	docker build --target build -t wallet-watcher-test .
+
+# ---------------------------
+# Solana テスト
+# ---------------------------
+
+# モック（Solana）
+test-solana: build-test-image
+	@echo "==> Solana mock tests"
+	docker run --rm wallet-watcher-test \
+	  sh -lc 'cd /src && /usr/local/go/bin/go test ./test -v -run TestSolanaClient_Mock'
+
+# インテグレーション（Solana）
+test-integration-solana: build-test-image
+	@NET=$$(docker inspect $$(docker compose ps -q postgres) --format "{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}"); \
+	echo "using network: $$NET"; \
+	docker run --rm --network $$NET \
+	  --env-file .env \
+	  wallet-watcher-test \
+	  sh -lc 'cd /src && /usr/local/go/bin/go test -tags=integration ./test -v -run TestSolana_Integration_One'
+
+# ---------------------------
+# Sui テスト
+# ---------------------------
+
+# モック（Sui）
+test-sui: build-test-image
+	@echo "==> Sui mock tests"
+	docker run --rm wallet-watcher-test \
+	  sh -lc 'cd /src && /usr/local/go/bin/go test ./test -v -run TestSuiClient_Mock'
+
+# インテグレーション（Sui）
+test-integration-sui: build-test-image
+	@NET=$$(docker inspect $$(docker compose ps -q postgres) --format "{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}"); \
+	echo "using network: $$NET"; \
+	docker run --rm --network $$NET \
+	  --env-file .env \
+	  wallet-watcher-test \
+	  sh -lc 'cd /src && /usr/local/go/bin/go test -tags=integration ./test -v -run TestSui_Integration_One'
