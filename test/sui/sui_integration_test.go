@@ -130,8 +130,6 @@ func TestSui_Integration_One(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	t.Logf("  hr.Events: %+v ",  hr.Events)
-	
 	
 	// 挿入したトランザクションハッシュがAPIレスポンスに含まれているかチェック
 	found := false
