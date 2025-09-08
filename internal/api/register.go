@@ -22,6 +22,9 @@ func Routes(s *Server) http.Handler {
 		w.Write([]byte("ok"))
 	})
 	r.Post("/register", s.handleRegister)
+
+	r.Get("/history", s.handleHistory)
+	
 	return r
 }
 

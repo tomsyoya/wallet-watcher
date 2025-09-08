@@ -46,7 +46,7 @@ build-test-image:
 test-solana: build-test-image
 	@echo "==> Solana mock tests"
 	docker run --rm wallet-watcher-test \
-	  sh -lc 'cd /src && /usr/local/go/bin/go test ./test -v -run TestSolanaClient_Mock'
+	  sh -lc 'cd /src && /usr/local/go/bin/go test ./test/solana -v -run TestSolanaClient_Mock'
 
 # インテグレーション（Solana）
 test-integration-solana: build-test-image
@@ -55,7 +55,7 @@ test-integration-solana: build-test-image
 	docker run --rm --network $$NET \
 	  --env-file .env \
 	  wallet-watcher-test \
-	  sh -lc 'cd /src && /usr/local/go/bin/go test -tags=integration ./test -v -run TestSolana_Integration_One'
+	  sh -lc 'cd /src && /usr/local/go/bin/go test -tags=integration ./test/solana -v -run TestSolana_Integration_One'
 
 # ---------------------------
 # Sui テスト
@@ -65,7 +65,7 @@ test-integration-solana: build-test-image
 test-sui: build-test-image
 	@echo "==> Sui mock tests"
 	docker run --rm wallet-watcher-test \
-	  sh -lc 'cd /src && /usr/local/go/bin/go test ./test -v -run TestSuiClient_Mock'
+	  sh -lc 'cd /src && /usr/local/go/bin/go test ./test/sui -v -run TestSuiClient_Mock'
 
 # インテグレーション（Sui）
 test-integration-sui: build-test-image
@@ -74,4 +74,4 @@ test-integration-sui: build-test-image
 	docker run --rm --network $$NET \
 	  --env-file .env \
 	  wallet-watcher-test \
-	  sh -lc 'cd /src && /usr/local/go/bin/go test -tags=integration ./test -v -run TestSui_Integration_One'
+	  sh -lc 'cd /src && /usr/local/go/bin/go test -tags=integration ./test/sui -v -run TestSui_Integration_One'
