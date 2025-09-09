@@ -46,7 +46,20 @@ services:
       redis:
         condition: service_started
     entrypoint: ["/api"]
-    #command: ["/app/api"]
+  worker:
+    build:
+      context: .
+      target: runtime
+    image: wallet-watcher:latest
+    command: ["/app/worker"]
+    env_file:
+      - .env
+    environment:
+      - POLL_INTERVAL_SEC=5
+      - BATCH_SIZE=10
+    depends_on:
+      - postgres
+    restart: unless-stopped
 
 volumes:
   pgdata:
