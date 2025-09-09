@@ -56,18 +56,18 @@ curl http://localhost:8080/health
 # => ok
 ```
 
-### アドレス登録
+### 監視対象アドレス登録
 
 ```bash
 # Solana
 curl -s -X POST http://localhost:8080/register \
   -H 'Content-Type: application/json' \
-  -d '{"chain":"solana","address":"<SOLANA_ADDRESS>"}'
+  -d "{\"chain\":\"solana\",\"address\":\"${SOL_ADDR}\"}"
 
-# Sui
+# Sui（
 curl -s -X POST http://localhost:8080/register \
   -H 'Content-Type: application/json' \
-  -d '{"chain":"sui","address":"0x<SUI_ADDRESS>"}'
+  -d "{\"chain\":\"sui\",\"address\":\"${SUI_ADDR}\"}"
 ```
 
 ### 履歴取得
@@ -83,20 +83,6 @@ curl "http://localhost:8080/history?chain=sui&address=0x<SUI_ADDRESS>&limit=20"
 curl "http://localhost:8080/history?chain=solana&before=2025-08-28T23:59:59Z&limit=10"
 ```
 
-### 監視対象アドレス追加
-
-```bash
-# Solana
-curl -s -X POST http://localhost:8080/register \
-  -H 'Content-Type: application/json' \
-  -d "{\"chain\":\"solana\",\"address\":\"${SOL_ADDR}\"}"
-
-# Sui（
-curl -s -X POST http://localhost:8080/register \
-  -H 'Content-Type: application/json' \
-  -d "{\"chain\":\"sui\",\"address\":\"${SUI_ADDR}\"}"
-
-```
 
 ## 🧪 テスト
 
