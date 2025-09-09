@@ -13,8 +13,11 @@ down:
 logs-api:
 	docker compose logs -f --tail=200 api
 
-logs-worker:
-	docker compose logs -f --tail=200 worker
+logs-worker-solana:
+	docker compose logs -f --tail=200 worker-solana
+
+logs-worker-sui:
+	docker compose logs -f --tail=200 worker-sui
 
 # マイグレーション実行（/migrations/内の *.sql を順番に流す）
 migrate:

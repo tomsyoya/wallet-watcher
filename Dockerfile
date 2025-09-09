@@ -14,15 +14,19 @@ ARG TARGETARCH=arm64
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -tags osusergo,netgo -ldflags='-s -w -extldflags "-static"' \
     -o /out/api ./cmd/api
-# WORKER
+# SOLANA WORKER
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH  \
-    go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
+    go build -trimpath -ldflags="-s -w" -o /out/worker-solana ./cmd/worker
+# SUI WORKER
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH  \
+    go build -trimpath -ldflags="-s -w" -o /out/worker-sui ./cmd/worker-sui
 
 # distroless の static 版（完全静的バイナリ向け）
 FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 WORKDIR /
 COPY --from=build /out/api /api
-COPY --from=build /out/worker /worker
+COPY --from=build /out/worker-solana /worker-solana
+COPY --from=build /out/worker-sui /worker-sui
 # ✨ HTTPS が必要な場合のために CA 証明書を同梱
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 USER nonroot

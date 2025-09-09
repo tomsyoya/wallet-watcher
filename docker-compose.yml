@@ -46,19 +46,36 @@ services:
       redis:
         condition: service_started
     entrypoint: ["/api"]
-  worker:
+  worker-solana:
     build:
       context: .
       target: runtime
     image: wallet-watcher:latest
-    command: ["/app/worker"]
+    entrypoint: ["/worker-solana"]
     env_file:
       - .env
     environment:
       - POLL_INTERVAL_SEC=5
       - BATCH_SIZE=10
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-sui:
+    build:
+      context: .
+      target: runtime
+    image: wallet-watcher:latest
+    entrypoint: ["/worker-sui"]
+    env_file:
+      - .env
+    environment:
+      - POLL_INTERVAL_SEC=5
+      - BATCH_SIZE=10
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

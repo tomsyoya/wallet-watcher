@@ -167,3 +167,92 @@ func (u *Uint64Flex) Value() (uint64, bool) {
     if u == nil { return 0, false }
     return uint64(*u), true
 }
+
+/* -------- getCheckpointSummary -------- */
+
+type CheckpointSummary struct {
+	SequenceNumber    *Uint64Flex `json:"sequenceNumber"`
+	Digest            string `json:"digest"`
+	PreviousDigest    string `json:"previousDigest"`
+	Epoch             *Uint64Flex `json:"epoch"`
+	TimestampMs       *Uint64Flex `json:"timestampMs"`
+	Transactions      []string `json:"transactions"`
+	CheckpointCommitments []string `json:"checkpointCommitments"`
+	ValidatorSignature    string `json:"validatorSignature"`
+}
+
+type GetCheckpointSummaryResult struct {
+	Data []CheckpointSummary `json:"data"`
+	NextCursor *string `json:"nextCursor"`
+	HasNextPage bool `json:"hasNextPage"`
+}
+
+func (c *Client) GetCheckpointSummary(ctx context.Context, cursor *string, limit int) (*GetCheckpointSummaryResult, error) {
+	if limit <= 0 { limit = 10 }
+	
+	// Sui RPC getCheckpoints の正しいパラメータ形式
+	params := []any{
+		cursor,  // cursor (string or null)
+		limit,   // limit (number)
+		true,    // descending order
+	}
+	
+	var result GetCheckpointSummaryResult
+	if err := c.call(ctx, "sui_getCheckpoints", params, &result); err != nil {
+		return nil, fmt.Errorf("rpc error %d: %s", err.Code, err.Message)
+	}
+	return &result, nil
+}
+
+/* -------- getTransactionBlock (詳細版) -------- */
+
+type TransactionBlockDetailed struct {
+	Digest      string `json:"digest"`
+	TimestampMs *Uint64Flex `json:"timestampMs"`
+	Transaction struct {
+		Data struct {
+			Message struct {
+				Inputs []struct {
+					Type string `json:"type"`
+					ValueType string `json:"valueType"`
+					Value string `json:"value"`
+				} `json:"inputs"`
+				Transactions []struct {
+					Kind string `json:"kind"`
+					Data map[string]any `json:"data"`
+				} `json:"transactions"`
+			} `json:"message"`
+		} `json:"data"`
+	} `json:"transaction"`
+	Effects struct {
+		Status struct {
+			Status string `json:"status"`
+		} `json:"status"`
+		GasUsed struct {
+			ComputationCost *Uint64Flex `json:"computationCost"`
+			StorageCost     *Uint64Flex `json:"storageCost"`
+			StorageRebate   *Uint64Flex `json:"storageRebate"`
+			NonRefundableStorageFee *Uint64Flex `json:"nonRefundableStorageFee"`
+		} `json:"gasUsed"`
+		TransactionDigest string `json:"transactionDigest"`
+	} `json:"effects"`
+}
+
+func (c *Client) GetTransactionBlockDetailed(ctx context.Context, digest string) (*TransactionBlockDetailed, error) {
+	params := []any{
+		digest,
+		map[string]any{
+			"showInput": true,
+			"showEffects": true,
+			"showEvents": true,
+			"showObjectChanges": true,
+			"showBalanceChanges": true,
+		},
+	}
+	
+	var result TransactionBlockDetailed
+	if err := c.call(ctx, "sui_getTransactionBlock", params, &result); err != nil {
+		return nil, fmt.Errorf("rpc error %d: %s", err.Code, err.Message)
+	}
+	return &result, nil
+}
