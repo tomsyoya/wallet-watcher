@@ -1,103 +1,49 @@
--- ================================
--- 0002_chain_split.sql (修正版)
--- アドレス監視テーブルをチェーン別に分割（統合案：カーソル列を同居）
--- tx_events_* もチェーン別に作成
--- ================================
+-- 0002_chain_split.sql
+-- 互換維持用の補正（既存環境で 0001 以前に作られたズレを吸収）
+-- 何度流しても安全
 
--- 1) 監視アドレス（Solana）
-CREATE TABLE IF NOT EXISTS watched_addresses_solana (
-  id             BIGSERIAL PRIMARY KEY,
-  address        TEXT NOT NULL,
-  -- カーソル（最後に処理したsignature）
-  last_signature TEXT,
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(address)
-);
+-- 旧テーブル／旧制約が存在していた場合に備えた補正（例示的に IF EXISTS で防御）
+-- ここでは実データ破壊を避け、存在確認のみ or 追補に留める
 
--- 2) 監視アドレス（Sui）
-CREATE TABLE IF NOT EXISTS watched_addresses_sui (
-  id              BIGSERIAL PRIMARY KEY,
-  address         TEXT NOT NULL,
-  -- カーソル（最後に処理したcheckpoint）
-  last_checkpoint BIGINT,
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(address)
-);
-
--- 3) 既存の旧テーブルが存在する場合の移行（OPTIONAL）
--- ※ 旧テーブル(registrations, cursors)が残っている環境のみ実行される
+-- tx_events_solana の一意性（古い環境で無い場合のみ追加）
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'registrations') THEN
-    INSERT INTO watched_addresses_solana (address, created_at, updated_at)
-    SELECT r.address, COALESCE(r.created_at, now()), now()
-    FROM registrations r
-    WHERE r.chain = 'solana'
-    ON CONFLICT (address) DO NOTHING;
-
-    INSERT INTO watched_addresses_sui (address, created_at, updated_at)
-    SELECT r.address, COALESCE(r.created_at, now()), now()
-    FROM registrations r
-    WHERE r.chain = 'sui'
-    ON CONFLICT (address) DO NOTHING;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'tx_events_solana'::regclass
+      AND (contype = 'p' OR (contype = 'u' AND conkey = ARRAY[
+        (SELECT attnum FROM pg_attribute WHERE attrelid='tx_events_solana'::regclass AND attname='tx_hash'),
+        (SELECT attnum FROM pg_attribute WHERE attrelid='tx_events_solana'::regclass AND attname='ts')
+      ]))
+  ) THEN
+    ALTER TABLE tx_events_solana
+      ADD CONSTRAINT uq_tx_events_solana_hash_ts UNIQUE (tx_hash, ts);
   END IF;
+END $$;
 
-  IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'cursors') THEN
-    -- Solana: last_marker を last_signature に
-    UPDATE watched_addresses_solana s
-    SET last_signature = c.last_marker,
-        updated_at = now()
-    FROM cursors c
-    WHERE c.chain = 'solana' AND c.address = s.address AND c.last_marker IS NOT NULL;
-
-    -- Sui: last_marker を数値にできる場合のみ反映
-    UPDATE watched_addresses_sui s
-    SET last_checkpoint = NULLIF(c.last_marker, '')::BIGINT,
-        updated_at = now()
-    FROM cursors c
-    WHERE c.chain = 'sui' AND c.address = s.address
-      AND c.last_marker ~ '^[0-9]+$';
+-- tx_events_sui の一意性
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'tx_events_sui'::regclass
+      AND (contype = 'p' OR (contype = 'u' AND conkey = ARRAY[
+        (SELECT attnum FROM pg_attribute WHERE attrelid='tx_events_sui'::regclass AND attname='tx_hash'),
+        (SELECT attnum FROM pg_attribute WHERE attrelid='tx_events_sui'::regclass AND attname='ts')
+      ]))
+  ) THEN
+    ALTER TABLE tx_events_sui
+      ADD CONSTRAINT uq_tx_events_sui_hash_ts UNIQUE (tx_hash, ts);
   END IF;
-END$$;
+END $$;
 
--- 4) 正規化イベント（チェーン別）
-CREATE TABLE IF NOT EXISTS tx_events_solana (
-  id         BIGSERIAL PRIMARY KEY,
-  tx_hash    TEXT NOT NULL,
-  ts         TIMESTAMPTZ NOT NULL,
-  sender     TEXT,
-  receiver   TEXT,
-  token      TEXT,
-  amount     NUMERIC(78,0),
-  fee        NUMERIC(78,0),
-  method     TEXT,
-  raw        JSONB,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(tx_hash, ts)
-);
+-- インデックスの取りこぼしを補完（IF NOT EXISTS）
+CREATE INDEX IF NOT EXISTS idx_tx_solana_ts          ON tx_events_solana (ts DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_solana_sender_ts   ON tx_events_solana (sender, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_solana_receiver_ts ON tx_events_solana (receiver, ts DESC);
 
-CREATE TABLE IF NOT EXISTS tx_events_sui (
-  id         BIGSERIAL PRIMARY KEY,
-  tx_hash    TEXT NOT NULL,
-  ts         TIMESTAMPTZ NOT NULL,
-  sender     TEXT,
-  receiver   TEXT,
-  token      TEXT,
-  amount     NUMERIC(78,0),
-  fee        NUMERIC(78,0),
-  method     TEXT,
-  raw        JSONB,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(tx_hash, ts)
-);
-
--- 5) 代表的な索引
-CREATE INDEX IF NOT EXISTS idx_tx_solana_ts        ON tx_events_solana (ts DESC);
-CREATE INDEX IF NOT EXISTS idx_tx_solana_sender_ts ON tx_events_solana (sender, ts DESC);
-CREATE INDEX IF NOT EXISTS idx_tx_solana_recv_ts   ON tx_events_solana (receiver, ts DESC);
-
-CREATE INDEX IF NOT EXISTS idx_tx_sui_ts        ON tx_events_sui (ts DESC);
-CREATE INDEX IF NOT EXISTS idx_tx_sui_sender_ts ON tx_events_sui (sender, ts DESC);
-CREATE INDEX IF NOT EXISTS idx_tx_sui_recv_ts   ON tx_events_sui (receiver, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_sui_ts          ON tx_events_sui (ts DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_sui_sender_ts   ON tx_events_sui (sender, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_sui_receiver_ts ON tx_events_sui (receiver, ts DESC);
