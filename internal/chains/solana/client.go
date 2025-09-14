@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -139,4 +140,153 @@ func (c *Client) GetTransaction(ctx context.Context, signature string) (*Transac
 		return nil, fmt.Errorf("rpc error %d: %s", out.Error.Code, out.Error.Message)
 	}
 	return out.Result, nil
+}
+
+// ---- GetBalances ----
+
+type Balance struct {
+	Token  string `json:"token"`
+	Amount int64  `json:"amount"`
+}
+
+type getBalanceResp struct {
+	Result struct {
+		Value uint64 `json:"value"`
+	} `json:"result"`
+	Error *rpcErrorBody `json:"error,omitempty"`
+}
+
+type getTokenAccountsResp struct {
+	Result struct {
+		Value []struct {
+			Account struct {
+				Data struct {
+					Parsed struct {
+						Info struct {
+							TokenAmount struct {
+								Amount         string `json:"amount"`
+								Decimals       int    `json:"decimals"`
+								UIAmountString string `json:"uiAmountString"`
+							} `json:"tokenAmount"`
+							Mint string `json:"mint"`
+						} `json:"info"`
+					} `json:"parsed"`
+				} `json:"data"`
+			} `json:"account"`
+		} `json:"value"`
+	} `json:"result"`
+	Error *rpcErrorBody `json:"error,omitempty"`
+}
+
+func (c *Client) GetBalances(ctx context.Context, address string) ([]Balance, error) {
+	var balances []Balance
+
+	// Get SOL balance
+	solBalance, err := c.getSOLBalance(ctx, address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SOL balance: %v", err)
+	}
+	if solBalance > 0 {
+		balances = append(balances, Balance{
+			Token:  "SOL",
+			Amount: int64(solBalance),
+		})
+	}
+
+	// Get token balances
+	tokenBalances, err := c.getTokenBalances(ctx, address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get token balances: %v", err)
+	}
+	balances = append(balances, tokenBalances...)
+
+	return balances, nil
+}
+
+func (c *Client) getSOLBalance(ctx context.Context, address string) (uint64, error) {
+	req := rpcRequest{
+		Jsonrpc: "2.0",
+		ID:      1,
+		Method:  "getBalance",
+		Params:  []interface{}{address},
+	}
+
+	b, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, bytes.NewReader(b))
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(httpReq)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	var out getBalanceResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, err
+	}
+	if out.Error != nil {
+		return 0, fmt.Errorf("rpc error %d: %s", out.Error.Code, out.Error.Message)
+	}
+
+	return out.Result.Value, nil
+}
+
+func (c *Client) getTokenBalances(ctx context.Context, address string) ([]Balance, error) {
+	req := rpcRequest{
+		Jsonrpc: "2.0",
+		ID:      1,
+		Method:  "getTokenAccountsByOwner",
+		Params: []interface{}{
+			address,
+			map[string]interface{}{
+				"programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+			},
+			map[string]interface{}{
+				"encoding": "jsonParsed",
+			},
+		},
+	}
+
+	b, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, bytes.NewReader(b))
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out getTokenAccountsResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	if out.Error != nil {
+		return nil, fmt.Errorf("rpc error %d: %s", out.Error.Code, out.Error.Message)
+	}
+
+	var balances []Balance
+	for _, account := range out.Result.Value {
+		if account.Account.Data.Parsed.Info.TokenAmount.Amount != "0" {
+			// Convert amount from string to int64
+			amount, err := strconv.ParseInt(account.Account.Data.Parsed.Info.TokenAmount.Amount, 10, 64)
+			if err != nil {
+				continue // Skip invalid amounts
+			}
+
+			// Use mint address as token identifier
+			token := account.Account.Data.Parsed.Info.Mint
+			if len(token) > 8 {
+				token = token[:8] + "..." // Shorten for display
+			}
+
+			balances = append(balances, Balance{
+				Token:  token,
+				Amount: amount,
+			})
+		}
+	}
+
+	return balances, nil
 }

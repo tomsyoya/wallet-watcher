@@ -32,6 +32,10 @@ type rpcError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 }
+
+func (e *rpcError) Error() string {
+	return fmt.Sprintf("rpc error %d: %s", e.Code, e.Message)
+}
 type rpcEnvelope struct {
 	Result json.RawMessage `json:"result"`
 	Error  *rpcError       `json:"error,omitempty"`
@@ -255,4 +259,106 @@ func (c *Client) GetTransactionBlockDetailed(ctx context.Context, digest string)
 		return nil, fmt.Errorf("rpc error %d: %s", err.Code, err.Message)
 	}
 	return &result, nil
+}
+
+/* -------- GetBalances -------- */
+
+type Balance struct {
+	Token  string `json:"token"`
+	Amount int64  `json:"amount"`
+}
+
+type getBalanceResp struct {
+	Result string `json:"result"`
+	Error  *rpcError `json:"error,omitempty"`
+}
+
+type getCoinsResp struct {
+	Result struct {
+		Data []struct {
+			CoinType string `json:"coinType"`
+			Balance  string `json:"balance"`
+		} `json:"data"`
+		NextCursor *string `json:"nextCursor"`
+		HasNextPage bool `json:"hasNextPage"`
+	} `json:"result"`
+	Error *rpcError `json:"error,omitempty"`
+}
+
+type getOwnedObjectsResp struct {
+	Result struct {
+		Data []struct {
+			Data *struct {
+				Fields map[string]interface{} `json:"fields"`
+			} `json:"data"`
+		} `json:"data"`
+		NextCursor *string `json:"nextCursor"`
+		HasNextPage bool `json:"hasNextPage"`
+	} `json:"result"`
+	Error *rpcError `json:"error,omitempty"`
+}
+
+func (c *Client) GetBalances(ctx context.Context, address string) ([]Balance, error) {
+	var balances []Balance
+
+	// Get SUI balance
+	suiBalance, err := c.getSUIBalance(ctx, address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SUI balance: %v", err)
+	}
+	if suiBalance > 0 {
+		balances = append(balances, Balance{
+			Token:  "SUI",
+			Amount: suiBalance,
+		})
+	}
+
+	// Get token balances
+	tokenBalances, err := c.getTokenBalances(ctx, address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get token balances: %v", err)
+	}
+	balances = append(balances, tokenBalances...)
+
+	return balances, nil
+}
+
+func (c *Client) getSUIBalance(ctx context.Context, address string) (int64, error) {
+	params := []any{
+		address,
+		map[string]any{
+			"filter": map[string]any{
+				"StructType": "0x2::coin::Coin<0x2::sui::SUI>",
+			},
+			"options": map[string]any{
+				"showType":    true,
+				"showContent": true,
+			},
+		},
+	}
+	
+	var result getOwnedObjectsResp
+	if err := c.call(ctx, "suix_getOwnedObjects", params, &result); err != nil {
+		return 0, err
+	}
+
+	var totalBalance int64
+	for _, obj := range result.Result.Data {
+		if obj.Data != nil && obj.Data.Fields != nil {
+			if balance, ok := obj.Data.Fields["balance"].(string); ok {
+				if bal, err := strconv.ParseInt(balance, 10, 64); err == nil {
+					totalBalance += bal
+				}
+			}
+		}
+	}
+
+	return totalBalance, nil
+}
+
+func (c *Client) getTokenBalances(ctx context.Context, address string) ([]Balance, error) {
+	// For now, return empty balances as Sui token balance retrieval is complex
+	// This would require implementing suix_getOwnedObjects with different filters
+	// for each token type, which is beyond the scope of this basic implementation
+	return []Balance{}, nil
 }

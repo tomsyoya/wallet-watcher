@@ -25,6 +25,11 @@ func Routes(s *Server) http.Handler {
 
 	r.Get("/history", s.handleHistory)
 	
+	// Balances endpoints
+	r.Get("/balances", s.handleBalances)
+	r.Get("/balances/solana/{address}", s.handleSolanaBalances)
+	r.Get("/balances/sui/{address}", s.handleSuiBalances)
+	
 	return r
 }
 
