@@ -4,13 +4,12 @@
 
 ## 🚀 機能
 
-- /register: アドレスを登録して監視対象に追加
-
-- /history: 保存済みトランザクション履歴を取得（チェーン別・アドレス別に絞り込み可能）
-
-- ヘルスチェック: /health で起動確認
-
-- テスト: Solana / Sui それぞれのモックテスト・インテグレーションテストを用意
+- **/register**: アドレスを登録して監視対象に追加 ✅
+- **/history**: 保存済みトランザクション履歴を取得（チェーン別・アドレス別に絞り込み可能） ✅
+- **/balances**: 最新残高取得（ネイティブ通貨 + 主要トークン/コイン） ✅ **新機能**
+- **/health**: ヘルスチェックで起動確認 ✅
+- **バックグラウンドワーカー**: 登録済みアドレスの自動監視・データ取得 ✅
+- **テストスイート**: モック・統合・API・E2Eテストを完備 ✅
 
 ## 🛠 前提
 
@@ -83,6 +82,35 @@ curl "http://localhost:8080/history?chain=sui&address=0x<SUI_ADDRESS>&limit=20"
 curl "http://localhost:8080/history?chain=solana&before=2025-08-28T23:59:59Z&limit=10"
 ```
 
+### 残高取得
+
+```bash
+# 汎用エンドポイント
+curl "http://localhost:8080/balances?chain=solana&address=${SOL_ADDR}"
+curl "http://localhost:8080/balances?chain=sui&address=${SUI_ADDR}"
+
+# チェーン専用エンドポイント
+curl "http://localhost:8080/balances/solana/${SOL_ADDR}"
+curl "http://localhost:8080/balances/sui/${SUI_ADDR}"
+```
+
+**レスポンス例:**
+```json
+{
+  "address": "11111111111111111111111111111112",
+  "balances": [
+    {
+      "token": "SOL",
+      "amount": 1234567
+    },
+    {
+      "token": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "amount": 5000000
+    }
+  ]
+}
+```
+
 
 ## 🧪 テスト
 
@@ -92,6 +120,7 @@ curl "http://localhost:8080/history?chain=solana&before=2025-08-28T23:59:59Z&lim
 make test-solana   # Solana モック
 make test-sui      # Sui モック
 ```
+
 ### インテグレーションテスト（実ノード + Postgres）
 
 .env に RPC URL / アドレスを設定済みであれば実行可能。
@@ -99,6 +128,19 @@ make test-sui      # Sui モック
 ```bash
 make test-integration-solana
 make test-integration-sui
+```
+
+### API統合テスト
+
+```bash
+make test-api-balances  # /balances API の統合テスト
+```
+
+### E2Eテスト
+
+```bash
+# API サーバーが起動している状態で実行
+bash test/e2e/balances_e2e_test.sh
 ```
 
 ### 環境変数の確認（デバッグ用）
@@ -117,10 +159,25 @@ make test-env
 
 マイグレーションは migrations/ に保存。
 
+## 📊 実装状況
+
+### ✅ 実装済み (約80%)
+- **API サーバー**: health, register, history, balances エンドポイント
+- **バックグラウンドワーカー**: Solana/Sui 両チェーンの自動監視・データ取得
+- **データベース**: 完全なスキーマ設計とマイグレーション
+- **Docker環境**: 本番レディなコンテナ構成
+- **テストスイート**: モック・統合・API・E2Eテスト完備
+- **残高取得**: ネイティブ通貨 + トークン残高のリアルタイム取得
+
+### ❌ 未実装 (約20%)
+- **Webhook通知**: イベント発生時の自動通知機能
+- **高度なエラーハンドリング**: Exponential backoff、DLQ
+- **CI/CD**: GitHub Actions による自動テスト・デプロイ
+- **パフォーマンス最適化**: キャッシュ、接続プール等
+
 ## 📌 今後の予定
 
-- バックグラウンドワーカーでアドレスごとの差分取得 & 自動挿入
-
-- トークン転送やコール内容の詳細解析
-
-- CI/CD にテスト統合
+- Webhook 通知機能の実装
+- 高度なリトライ・エラーハンドリングの追加
+- CI/CD パイプラインの構築
+- パフォーマンス最適化
